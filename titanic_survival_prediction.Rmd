@@ -313,8 +313,8 @@ model = randomForest(formula = as.formula(Survived ~ Sex + Pclass + Fare + Embar
                      data = train, do.trace = T, ntree = 500, nodesize = 5)
 
 # Show model error
-plot(rf_model, ylim=c(0,0.36))
-legend('topright', colnames(rf_model$err.rate), col=1:3, fill=1:3)
+plot(model, ylim=c(0,0.36))
+legend('topright', colnames(model$err.rate), col=1:3, fill=1:3)
 
 
 # test on the a partition test
