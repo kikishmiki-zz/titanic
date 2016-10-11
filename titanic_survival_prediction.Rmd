@@ -8,6 +8,7 @@ output:
     number_sections: TRUE
 ---
 
+
 ```{r setup, include=FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -34,9 +35,10 @@ The first step is to study the data and identify missing values, understand stru
 
 ## Data Loading
 ```{r load}
-train = read.csv("/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/train.csv", header = TRUE, na.strings = c("", NA))
-test = read.csv("/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/test.csv", header = TRUE, na.strings = c("", NA))
-whole = rbind(train[,-2], test)
+path <- "/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/"
+train <- read.csv(paste(path, "data/train.csv", sep = ""), header = TRUE, na.strings = c("", NA))
+test <- read.csv(paste(path, "data/test.csv", sep = ""), header = TRUE, na.strings = c("", NA))
+whole <- rbind(train[,-2], test)
 
 ```
 
@@ -300,7 +302,7 @@ ggplot(temp.data, aes(x = as.factor(Survived), y = Fare)) +
 
 At last we are ready to use a ML approach to predict the fate of the test data set. For this, we will use random forests as others have done in the past. 
 
-```{r rf_prediction}
+```{r rf_prediction, results = "hide"}
 
 # we have engineered several new features which now reside in 'whole'
 # so use whole split into train and test and not the originals
@@ -309,7 +311,7 @@ train <- cbind(Survived = train$Survived, whole[ind,])
 test <- whole[-ind,]
 
 set.seed(93549)
-model = randomForest(formula = as.formula(Survived ~ Sex + Pclass + Fare + Embarked + FamilySize), 
+model = randomForest(formula = as.formula( as.factor(Survived) ~ Sex + Pclass + Fare + Embarked + FamilySize), 
                      data = train, do.trace = T, ntree = 500, nodesize = 5)
 
 # Show model error

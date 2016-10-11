@@ -1,65 +1,40 @@
----
-title: "Titanic Survival Prediction"
-author: "Kiana Toufighi"
-date: "11 October 2016"
-output: 
-  html_document:
-    toc: TRUE
-    number_sections: TRUE
----
+##########################################################################
+# Script: affluence_analysis.R
+# Author: Kiana Toufigh, kiana.toufighi@gmail.com
+# Date: 15/01/2016
+#
+# Description: Predict fate of passengers from historical data based on given features. 
+#
+###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!###!
 
-```{r setup, include=FALSE, message = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-# Introduction
-
-This is my first stab at Kaggle. I'm trying to learn simply how to submit results into a competition. So coming up with a super accurate model is not the objective of this exercise. Simply completing the model and submitting it. Inspired by Megan Risdal's very well written example/tutorial, I've decided to write my code in R Markdown. However, instead of forking her work I'm doing it from scratch doing the data wrangling, cleansing, exploration, modelling, and prediction slightly differently. So here we go. 
 
 ## Library Loading
-
-```{r libraries, message = FALSE}
 library(Amelia)
 library(randomForest)
 library(ggplot2)
 library(ggthemes)
 library(gridExtra)
 library(grid)
-```
-
-
-# Data Wrangling 
-
-The first step is to study the data and identify missing values, understand structure and perhaps relationships and start thinkig about missing value imputation. 
 
 ## Data Loading
-```{r load}
-train = read.csv("/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/train.csv", header = TRUE, na.strings = c("", NA))
-test = read.csv("/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/test.csv", header = TRUE, na.strings = c("", NA))
-whole = rbind(train[,-2], test)
+path <- "/Users/kianatoufighi/Dropbox (Personal)/Script Repository/R/Kaggle/Titanic/"
+train <- read.csv(paste(path, "data/train.csv", sep = ""), header = TRUE, na.strings = c("", NA))
+test <- read.csv(paste(path, "data/test.csv", sep = ""), header = TRUE, na.strings = c("", NA))
+whole <- rbind(train[,-2], test)
 
-```
-
-Let's look at what features have missing vallues. 
-
-```{r wrangle}
+# Check missing values in data
 missmap(whole, col = c("yellow", "blue"), main = "The Titanic Passenger Data")
-```
 
-This plot is ranked over variables from most missing to least missing. This indicates that the two variables with the most missing values are Cabin and Age. In addition we see Embarkment with two missing values. One common way for missing value imputation is to replace missing values with an overall average. But before we think of a way of imputing missing values, let us look at general features of the passengers - their sex, age, class, and fate. Then we can quickly see if one or more of the features independently or as co-variables are obvious candidates in predicting passenger fate. 
-
-```{r plot data, warning = FALSE}
+# Explore simple relationships in data
 ggplot(train, aes(x = as.factor(Survived))) +
   geom_bar(stat="count", width = 0.5) +
   labs(title = "Passenger Fate", x = "Survived", y = "Count") +
   theme_bw()
 
-
 ggplot(train, aes(x = Sex)) +
   geom_bar(stat="count", width = 0.5) +
   labs(title = "Passenger Sex", x = "Sex", y = "Count") +
   theme_bw()
-
 
 ggplot(train, aes(x = as.factor(Pclass))) +
   geom_bar(stat="count", width = 0.5) +
@@ -72,29 +47,18 @@ ggplot(train, aes(x = Age)) +
   annotate("text", x = 70, y = 27.5, label = paste("median age =", median(train$Age, na.rm = TRUE))) +
   theme_bw()
 
-```
-
-From this quick and crude analysis (plotting of data) we gain a general understanding of the data. It appears that the majority of the passengers on the Titanic had a tragic fate (about 60%). Also it appears that most passengers were male and on average quite young (28), and making the journey in the third class. Let's look deeper by looking at the relationship between class and age. Maybe we can use class to determine missing ages.  
-
-```{r plot data 2, warning = FALSE}
 ggplot(whole, aes(x = as.factor(Pclass), y = Age)) +
   geom_boxplot() +
   labs(title = "Passenger Age by Class (whole dataset)", x = "Class", y = "Age") +
   theme_bw()
-
-
 a <- whole$Age[which(whole$Pclass == 1)]
 c <- whole$Age[which(whole$Pclass == 3)]
 wt <- wilcox.test(a, c)
 footnote <- paste("1st class ages significantly differs from 3rd (p-value =", round(wt$p.value, 2), ")")
 grid.text(footnote, x = unit(300, "native"), y = unit(50, "native"))
 
-```
-
-This plot confirms that there is a difference in the distributions of ages when grouped by class. This kind of makes intuitive sense because wealthier people tend to be older especially before the era of tech giants. The other feature that could provide a hint as to the age of passengers is the title. Let's summarise titles. 
-
-```{r titles}
-# remember that everything in R is a function call including indexing operators [], thus the following
+# Strip titles out of full names
+# Remember everything in R is a function call including indexing operators [], thus the following
 # two calls to sapply are equivalent: sapply(char.vec, "[", 2) and sapply(char.vec, function(x) {x[2]})
 titles = sapply(strsplit(sapply(strsplit(as.character(whole$Name), ","), function(x){ x[2] }), "\\."), "[", 1)
 titles = gsub(" ", "", titles, fixed = TRUE)
@@ -113,47 +77,30 @@ titles[which(titles %in% rare.titles)] <- "Grand"
 # Let's add these titles to the data set
 whole$Title <- titles 
 
-```
 
-Now that we have cleaned up titles a bit let's look at relationship with age. 
-```{r plot data 3, warning = FALSE}
 ggplot(whole, aes(x = as.factor(Title), y = Age)) +
   geom_boxplot() +
   labs(title = "Passenger Age by Title (whole dataset)", x = "Title", y = "Age") +
   theme_bw()
-```
 
-Looking at this plot we can immediately confirm a lot of common knowledge. On average married women (designated by Mrs) are older than unmarried women (designated by Miss). Same goes for older men with the title Mr and boys whoe were referred to as Master. So we can use these two key features - class and title - to assign missing ages. 
+## Missing Values Imputation 
 
-
-# Missing Values Imputation 
-We cannot do anything about Cabin feature because more than 70% of it is missing but with regards to the Age feature there are several ways missing values can be imputed. However imputing 20% of a feature based on 80% following some intuitive guidelines should be doable. A simple way is to replace the missing values wiith the overal means of the age column. Let's try to "predict" missing ages based on Class and Title based on the prelimary results we got in the previous section. 
-
-```{r age mean}
 mean(whole$Age, na.rm = TRUE)
-```
 
-Let's get the index of all rows with missing Age and then using the Class and Title of that row try to make a reasonable estimate of Age. 
 
-```{r missing age}
 # get the index of all rows with missing values for Age
 ind = which(is.na(whole$Age))
 table(whole[ind, c("Title", "Pclass")])
-```
 
-What we see here is a break-down of titles across classes - for example common titles like Mr and Mrs appear across the three classes. So let's explore the relationship between Class and Title and Age.
-```{r class_title_age}
+
 # There has to be a way to generate a summary statistic (e.g. mean) inside geom_tile
 summary.tab = aggregate(Age ~ Title + Pclass, whole, mean)
 ggplot(summary.tab, aes(x = as.factor(Title), y = Pclass)) +
   geom_tile(aes(fill = Age), na.rm = TRUE, stat = "identity") +
   labs(title = "Passenger Age by Title and Class (whole dataset)", x = "Title", y = "Class") +
   theme_bw()
-```
 
-While the average age of passengers with the title Master seems to be equal across the three classes (around 10), other titles like Miss have varying associated average ages. Passengers with the title Miss who were either unmarried women or girls have lower average age in the third class than in the second and first and those in the first class have the highest average age. Thus together Title and Class make good predictors for Age. 
 
-```{r impute age}
 ind = which(is.na(whole$Age))
 for (i in ind) {
   title.i <- whole[i, "Title"]
@@ -162,75 +109,47 @@ for (i in ind) {
   
   whole[i, "Age"] <- age.approx
 }
-```
 
 
-Follow a similar strategy to fill the two missing Embarked values. 
 
-```{r class_embarked}
 summary.tab = table(whole$Embarked, whole$Pclass)
 ggplot(whole, aes(x = Pclass, y = Embarked), na.rm = TRUE) +
   geom_count() +
   labs(title = "Passenger Embarkment Port by Class (whole dataset)", x = "Class", y = "Embarked") +
   theme_bw()
-```
 
-Looking at this graphic and summary table, we notice that passengers in the second and third class mostly embarked from port S (Southhampton), while first class passengers were equally likely to board from port C (Cherbourg). This is an interesting observation which is worth following up. Perhaps if we plot port of departure as a function of fare we can find out more.
 
-```{r fare_embarked}
 ggplot(whole, aes(x = factor(Embarked), y = Fare)) +
   geom_dotplot(binaxis = "y", stackdir = "center", binpositions = "all", binwidth = 0.8, na.rm = TRUE) +
   labs(title = "Passenger Embarkment Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
   theme_bw()
-```
 
-This plot is not very helpful at all. So let's look at a classic boxplot. 
-```{r fare_embarked2}
+
 ggplot(whole, aes(x = factor(Embarked), y = Fare), na.rm = TRUE) +
   geom_boxplot() +
   labs(title = "Passenger Embarkment Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
   theme_bw()
-```
 
-This plot is not very clear either. Let's just do a statistical test to see whether the mean of the sample of fares boarding at Cherbourg is different from the mean of fares boarded from Southhampton and whether that differnce is significant. 
-```{r fare_embarked_stats_test}
+
+
 wilcox.test(whole$Fare[which(whole$Embarked == "C")], whole$Fare[which(whole$Embarked == "S")])
-```
-
-This indicates that the two samples have means which are significantly different from one another. So we look at the median (mean) of each sample. 
-
-```{r median_fare_by_embarked}
 median(na.omit(whole$Fare[which(whole$Embarked == "S")]))
 median(na.omit(whole$Fare[which(whole$Embarked == "C")]))
-```
 
-Indeed the medians of these two samples are quite different. So let us assign the missing values for Embarked largely based on Fare. Since the two rows missing the Embarked values had 
 
-```{r impute embarked}
 ind = which(is.na(whole$Embarked))
 for (i in ind) {
   whole[i, "Embarked"] <- "S"
 }
-```
 
-Now let's look at what features have missing vallues again after the imputation. 
-
-```{r wrangle2}
 missmap(whole, col = c("yellow", "blue"), main = "The Titanic Passenger Data")
-```
-
-Nice!
 
 
-# Feature Engineering
 
-This is where we will create new features by combining existing ones in order to improve predictions. Let's look at families and see if being single versus being in a family helps one survive. 
+## Feature Engineering
 
-```{r family_size}
 # visualise realtionship between family size and survival 
 whole$FamilySize <- whole$SibSp + whole$Parch + 1
-
-# but restrict the index to 
 ind = which(whole$PassengerId %in% train$PassengerId) 
 temp.data = cbind(Survived = train[,2], whole[ind,])
 
@@ -238,12 +157,6 @@ ggplot(temp.data, aes(x = FamilySize, fill = as.factor(Survived))) +
   geom_bar(position = "dodge", stat = "count") + 
   scale_x_continuous(breaks = c(1:11)) +
   theme_few()
-
-```
-
-This plot shows that singles were more likely to perish while couples and small families did better. We can introduce a categorical variable that indicates single, couple, small, or large family. Then we can redo this plot and see if any patterns become clearer.
-
-```{r family_size_category}
 
 whole$FamilyCategory[whole$FamilySize == 1] <- "single"
 whole$FamilyCategory[whole$FamilySize == 2] <- "couple"
@@ -259,17 +172,8 @@ ggplot(temp.data, aes(x = FamilyCategory, fill = as.factor(Survived))) +
   geom_bar(position = "dodge", stat = "count") + 
   theme_few()
 
-```
 
-This plot seems to suggest that family sizes in the two extreme was detrimental. That is singles and large families did not survive. However there is a confouding factor in that large families may have been in the lower classes below the ship and did not manage to escape on time. So let's explore class, fare, and title as well. 
-
-# Data Exploration
-
-In this section we visualise the relationship between various featrues and survival to understand what impacts survival. 
-
-
-```{r other_factors}
-
+## Data Exploration
 ggplot(temp.data, aes(x = Pclass, fill = as.factor(Survived))) +
   geom_bar(position = "dodge", stat = "count") + 
   labs(title = "Passenger Fate by Class", x = "Survived") +
@@ -293,14 +197,7 @@ ggplot(temp.data, aes(x = as.factor(Survived), y = Fare)) +
   theme_few()
 
 
-```
-
-
 # Prediction
-
-At last we are ready to use a ML approach to predict the fate of the test data set. For this, we will use random forests as others have done in the past. 
-
-```{r rf_prediction}
 
 # we have engineered several new features which now reside in 'whole'
 # so use whole split into train and test and not the originals
@@ -314,10 +211,8 @@ model = randomForest(formula = as.formula(Survived ~ Sex + Pclass + Fare + Embar
 
 # Show model error
 plot(rf_model, ylim=c(0,0.36))
-legend('topright', colnames(rf_model$err.rate), col=1:3, fill=1:3)
-
+legend('topright', colnames(model$err.rate), col=1:3, fill=1:3)
 
 # test on the a partition test
 predicted = predict(model, test)
 
-```
