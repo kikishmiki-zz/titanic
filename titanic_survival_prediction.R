@@ -85,13 +85,7 @@ ggplot(whole, aes(x = as.factor(Title), y = Age)) +
 
 ## Missing Values Imputation 
 
-mean(whole$Age, na.rm = TRUE)
-
-
-# get the index of all rows with missing values for Age
-ind = which(is.na(whole$Age))
-table(whole[ind, c("Title", "Pclass")])
-
+# Impute missing Age 
 
 # There has to be a way to generate a summary statistic (e.g. mean) inside geom_tile
 summary.tab = aggregate(Age ~ Title + Pclass, whole, mean)
@@ -99,7 +93,6 @@ ggplot(summary.tab, aes(x = as.factor(Title), y = Pclass)) +
   geom_tile(aes(fill = Age), na.rm = TRUE, stat = "identity") +
   labs(title = "Passenger Age by Title and Class (whole dataset)", x = "Title", y = "Class") +
   theme_bw()
-
 
 ind = which(is.na(whole$Age))
 for (i in ind) {
@@ -110,8 +103,25 @@ for (i in ind) {
   whole[i, "Age"] <- age.approx
 }
 
+# Impute Fare
+summary.tab = aggregate(Fare ~ Pclass + Embarked, whole, mean)
+ggplot(summary.tab, aes(x = as.factor(Embarked), y = Pclass)) +
+  geom_tile(aes(fill = Fare), na.rm = TRUE, stat = "identity") +
+  labs(title = "Passenger Fare by Port of Embarkment and Class (whole dataset)", x = "Title", y = "Class") +
+  theme_bw()
+
+ind = which(is.na(whole$Fare))
+for (i in ind) {
+  class.i <- whole[i, "Pclass"]
+  port.i <- whole[i, "Embarked"]
+  
+  fare.approx <- round(summary.tab[which(summary.tab$Pclass == class.i & summary.tab$Embarked == port.i), "Fare"])
+  
+  whole[i, "Fare"] <- fare.approx
+}
 
 
+# Impute missing Embarkment  
 summary.tab = table(whole$Embarked, whole$Pclass)
 ggplot(whole, aes(x = Pclass, y = Embarked), na.rm = TRUE) +
   geom_count() +
@@ -121,16 +131,13 @@ ggplot(whole, aes(x = Pclass, y = Embarked), na.rm = TRUE) +
 
 ggplot(whole, aes(x = factor(Embarked), y = Fare)) +
   geom_dotplot(binaxis = "y", stackdir = "center", binpositions = "all", binwidth = 0.8, na.rm = TRUE) +
-  labs(title = "Passenger Embarkment Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
+  labs(title = "Passenger Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
   theme_bw()
-
 
 ggplot(whole, aes(x = factor(Embarked), y = Fare), na.rm = TRUE) +
   geom_boxplot() +
-  labs(title = "Passenger Embarkment Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
+  labs(title = "Passenger Fare by Port of Embarkment (whole dataset)", x = "Embarked", y = "Fare") +
   theme_bw()
-
-
 
 wilcox.test(whole$Fare[which(whole$Embarked == "C")], whole$Fare[which(whole$Embarked == "S")])
 median(na.omit(whole$Fare[which(whole$Embarked == "S")]))
@@ -206,13 +213,17 @@ train <- cbind(Survived = train$Survived, whole[ind,])
 test <- whole[-ind,]
 
 set.seed(93549)
-model = randomForest(formula = as.formula(Survived ~ Sex + Pclass + Fare + Embarked + FamilySize), 
+model <- randomForest(formula = as.formula( as.factor(Survived) ~ Sex + Pclass + Fare + Embarked + FamilySize), 
                      data = train, do.trace = T, ntree = 500, nodesize = 5)
 
 # Show model error
-plot(rf_model, ylim=c(0,0.36))
+plot(model, ylim=c(0,0.36))
 legend('topright', colnames(model$err.rate), col=1:3, fill=1:3)
 
 # test on the a partition test
-predicted = predict(model, test)
+prediction <- predict(model, test)
+#solution <- data.frame(PassengerID = test$PassengerId, Survived = prediction)
+solution <- data.frame(PassengerID = test$PassengerId, Survived = prediction)
+write.csv(solution, file = 'rf_mod_solution.csv', row.names = F)
+
 

@@ -144,6 +144,7 @@ table(whole[ind, c("Title", "Pclass")])
 ```
 
 What we see here is a break-down of titles across classes - for example common titles like Mr and Mrs appear across the three classes. So let's explore the relationship between Class and Title and Age.
+
 ```{r class_title_age}
 # There has to be a way to generate a summary statistic (e.g. mean) inside geom_tile
 summary.tab = aggregate(Age ~ Title + Pclass, whole, mean)
@@ -166,8 +167,32 @@ for (i in ind) {
 }
 ```
 
+Follow a very similar strategy for imputing missing Fare values. 
+```{r class_embarked_fare}
+summary.tab = aggregate(Fare ~ Pclass + Embarked, whole, mean)
+ggplot(summary.tab, aes(x = as.factor(Embarked), y = Pclass)) +
+  geom_tile(aes(fill = Fare), na.rm = TRUE, stat = "identity") +
+  labs(title = "Passenger Fare by Port of Embarkment and Class (whole dataset)", x = "Title", y = "Class") +
+  theme_bw()
+```
 
-Follow a similar strategy to fill the two missing Embarked values. 
+Again here we see that average fares for the same class show variance across ports. Adding the port of embarkment dimensionality allows us to differentiate between embarkment points and use this information in our estimation of missing fares.
+
+```{r impute fare}
+ind = which(is.na(whole$Fare))
+for (i in ind) {
+  class.i <- whole[i, "Pclass"]
+  port.i <- whole[i, "Embarked"]
+  
+  fare.approx <- round(summary.tab[which(summary.tab$Pclass == class.i & summary.tab$Embarked == port.i), "Fare"])
+  
+  whole[i, "Fare"] <- fare.approx
+}
+
+```
+
+
+Finally follow yet the same strategy to fill the two missing Embarked values. 
 
 ```{r class_embarked}
 summary.tab = table(whole$Embarked, whole$Pclass)
@@ -239,6 +264,7 @@ temp.data = cbind(Survived = train[,2], whole[ind,])
 ggplot(temp.data, aes(x = FamilySize, fill = as.factor(Survived))) +
   geom_bar(position = "dodge", stat = "count") + 
   scale_x_continuous(breaks = c(1:11)) +
+  labs(title = "Passenger Fate by Family Size (whole dataset)") +
   theme_few()
 
 ```
@@ -259,6 +285,7 @@ temp.data = cbind(Survived = train[,2], whole[ind,])
 
 ggplot(temp.data, aes(x = FamilyCategory, fill = as.factor(Survived))) +
   geom_bar(position = "dodge", stat = "count") + 
+  labs(title = "Passenger Fate by Family Size Category (whole dataset)") +
   theme_few()
 
 ```
@@ -302,7 +329,7 @@ ggplot(temp.data, aes(x = as.factor(Survived), y = Fare)) +
 
 At last we are ready to use a ML approach to predict the fate of the test data set. For this, we will use random forests as others have done in the past. 
 
-```{r rf_prediction, results = "hide"}
+```{r rf_training, results = "hide"}
 
 # we have engineered several new features which now reside in 'whole'
 # so use whole split into train and test and not the originals
@@ -311,15 +338,23 @@ train <- cbind(Survived = train$Survived, whole[ind,])
 test <- whole[-ind,]
 
 set.seed(93549)
-model = randomForest(formula = as.formula( as.factor(Survived) ~ Sex + Pclass + Fare + Embarked + FamilySize), 
+model <- randomForest(formula = as.formula( as.factor(Survived) ~ Sex + Pclass + Fare + Embarked + FamilySize), 
                      data = train, do.trace = T, ntree = 500, nodesize = 5)
 
 # Show model error
 plot(model, ylim=c(0,0.36))
 legend('topright', colnames(model$err.rate), col=1:3, fill=1:3)
 
+```
+
+
+```{r rf_testing}
 
 # test on the a partition test
-predicted = predict(model, test)
+prediction <- predict(model, test)
+
+# Save the solution to a dataframe with two columns: PassengerId and Survived (prediction) and write to file
+solution <- data.frame(PassengerID = test$PassengerId, Survived = prediction)
+write.csv(solution, file = 'rf_mod_Solution.csv', row.names = F)
 
 ```
